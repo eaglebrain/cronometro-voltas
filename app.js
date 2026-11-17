@@ -5,6 +5,8 @@ const DEFAULT_SECONDS = 10;
 const MIN_SECONDS = 1;
 const MAX_SECONDS = 3600;
 const STORAGE_NOTIFY = 'voltas:notify';
+const STORAGE_PRESETS = 'voltas:presets';
+const DEFAULT_PRESETS = [30, 60, 120, 180, 300];
 const BASE_TITLE = document.title;
 
 const LABEL_COLORS = [
@@ -18,6 +20,7 @@ const LABEL_COLORS = [
 const LABEL_BY_ID = new Map(LABEL_COLORS.map((color) => [color.id, color]));
 
 const el = {
+  tint: document.getElementById('tint'),
   dial: document.getElementById('dial'),
   meta: document.getElementById('meta'),
   time: document.getElementById('time'),
@@ -37,7 +40,8 @@ const el = {
   list: document.getElementById('list'),
   total: document.getElementById('total'),
   empty: document.getElementById('empty'),
-  logHint: document.getElementById('logHint'),
+  labelOpen: document.getElementById('labelOpen'),
+  labelChipText: document.getElementById('labelChipText'),
   label: document.getElementById('label'),
   labelForm: document.getElementById('labelForm'),
   labelSub: document.getElementById('labelSub'),
@@ -46,6 +50,16 @@ const el = {
   labelColors: document.getElementById('labelColors'),
   labelNote: document.getElementById('labelNote'),
   labelCount: document.getElementById('labelCount'),
+  confirm: document.getElementById('confirm'),
+  confirmText: document.getElementById('confirmText'),
+  confirmCancel: document.getElementById('confirmCancel'),
+  confirmStop: document.getElementById('confirmStop'),
+  presetDlg: document.getElementById('presetDlg'),
+  presetForm: document.getElementById('presetForm'),
+  presetClose: document.getElementById('presetClose'),
+  presetSeconds: document.getElementById('presetSeconds'),
+  presetList: document.getElementById('presetList'),
+  presetEmpty: document.getElementById('presetEmpty'),
   toast: document.getElementById('toast'),
   proj: document.getElementById('proj'),
   projOpen: document.getElementById('projOpen'),
@@ -66,7 +80,7 @@ const state = {
   raf: 0,
   endTimer: 0,
   rounds: [],
-  labelIndex: -1,
+  label: { color: null, note: '' },
 };
 
 /* ---------- preferências ---------- */
@@ -77,6 +91,31 @@ function readPref(key) {
 
 function writePref(key, value) {
   try { localStorage.setItem(key, value); } catch { /* modo privado */ }
+}
+
+function loadCustomPresets() {
+  let raw = [];
+  try { raw = JSON.parse(readPref(STORAGE_PRESETS) ?? '[]'); } catch { raw = []; }
+  if (!Array.isArray(raw)) return [];
+
+  const seen = new Set(DEFAULT_PRESETS);
+  const presets = [];
+  for (const value of raw) {
+    const seconds = Math.round(Number(value));
+    if (!Number.isFinite(seconds) || seconds < MIN_SECONDS || seconds > MAX_SECONDS) continue;
+    if (seen.has(seconds)) continue;
+    seen.add(seconds);
+    presets.push(seconds);
+  }
+  return presets;
+}
+
+let customPresets = loadCustomPresets();
+
+const allPresets = () => [...DEFAULT_PRESETS, ...customPresets];
+
+function saveCustomPresets() {
+  writePref(STORAGE_PRESETS, JSON.stringify(customPresets));
 }
 
 /* ---------- formatação ---------- */
@@ -109,9 +148,118 @@ function parseBase() {
 function syncBase() {
   const seconds = parseBase();
   paintTime(formatSeconds(seconds ?? 0));
-  for (const button of el.presets.querySelectorAll('.preset')) {
+  for (const button of el.presets.querySelectorAll('.preset[data-seconds]')) {
     button.setAttribute('aria-pressed', String(Number(button.dataset.seconds) === seconds));
   }
+}
+
+function formatPreset(seconds) {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest ? `${minutes}m${pad2(rest)}` : `${minutes}min`;
+}
+
+const presetKey = (index) => (index < 9 ? String(index + 1) : index === 9 ? '0' : '');
+
+function renderPresets() {
+  const current = parseBase();
+  const buttons = allPresets().map((seconds, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'preset';
+    button.dataset.seconds = String(seconds);
+    button.title = `${seconds} segundos`;
+    button.setAttribute('aria-pressed', String(seconds === current));
+    button.append(formatPreset(seconds));
+
+    const key = presetKey(index);
+    if (key) {
+      const kbd = document.createElement('kbd');
+      kbd.className = 'preset__key';
+      kbd.textContent = key;
+      button.append(kbd);
+      button.setAttribute('aria-keyshortcuts', key);
+    }
+    return button;
+  });
+
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'preset preset--add';
+  add.id = 'presetAdd';
+  add.textContent = '+';
+  add.title = 'novo preset (a)';
+  add.setAttribute('aria-label', 'novo preset');
+
+  el.presets.replaceChildren(...buttons, add);
+}
+
+function renderPresetList() {
+  el.presetList.replaceChildren(...customPresets.map((seconds, index) => {
+    const li = document.createElement('li');
+    const label = document.createElement('span');
+    const remove = document.createElement('button');
+    const key = presetKey(DEFAULT_PRESETS.length + index);
+
+    label.className = 'presetDlg__label';
+    label.textContent = formatPreset(seconds);
+    if (key) {
+      const kbd = document.createElement('kbd');
+      kbd.textContent = key;
+      label.append(kbd);
+    }
+
+    remove.type = 'button';
+    remove.className = 'presetDlg__remove';
+    remove.dataset.index = String(index);
+    remove.textContent = '×';
+    remove.title = `remover ${formatPreset(seconds)}`;
+    remove.setAttribute('aria-label', `remover preset ${formatPreset(seconds)}`);
+
+    li.append(label, remove);
+    return li;
+  }));
+
+  el.presetEmpty.hidden = customPresets.length > 0;
+}
+
+function addCustomPreset(seconds) {
+  const value = Math.round(seconds);
+  if (!Number.isFinite(value) || value < MIN_SECONDS || value > MAX_SECONDS) {
+    showToast(`use de ${MIN_SECONDS} a ${MAX_SECONDS} segundos`);
+    return false;
+  }
+  if (allPresets().includes(value)) {
+    showToast('esse preset já existe');
+    return false;
+  }
+
+  customPresets.push(value);
+  saveCustomPresets();
+  renderPresets();
+  renderPresetList();
+  if (state.phase === 'setup') {
+    el.base.value = value;
+    syncBase();
+  }
+  return true;
+}
+
+function removeCustomPreset(index) {
+  if (!customPresets[index]) return;
+  customPresets.splice(index, 1);
+  saveCustomPresets();
+  renderPresets();
+  renderPresetList();
+  syncBase();
+}
+
+function openPresetDialog() {
+  renderPresetList();
+  el.presetSeconds.value = '';
+  el.presetDlg.showModal();
+  el.presetSeconds.focus();
 }
 
 /* ---------- som ---------- */
@@ -159,11 +307,20 @@ let notifyEnabled = notifySupported && readPref(STORAGE_NOTIFY) !== 'off';
 let notifyAsked = false;
 let toastTimer = 0;
 
-function showToast(message, duration = 4200) {
+function hideToast() {
+  clearTimeout(toastTimer);
+  el.toast.classList.remove('toast--alarm');
+  el.toast.hidden = true;
+}
+
+function showToast(message, { duration = 4200, alarm = false } = {}) {
   clearTimeout(toastTimer);
   el.toast.textContent = message;
+  el.toast.title = 'clique para fechar';
+  el.toast.setAttribute('role', alarm ? 'alert' : 'status');
+  el.toast.classList.toggle('toast--alarm', alarm);
   el.toast.hidden = false;
-  toastTimer = setTimeout(() => { el.toast.hidden = true; }, duration);
+  toastTimer = setTimeout(hideToast, duration);
 }
 
 function renderNotify() {
@@ -240,10 +397,8 @@ function announceRound() {
     }
   }
 
-  if (!delivered) {
-    showToast(`${title} · ${body}`);
-    if (document.hidden) document.title = `⏰ ${title}`;
-  }
+  if (!delivered && document.hidden) document.title = `⏰ ${title}`;
+  showToast(`${title} · ${body}`, { alarm: true, duration: 8000 });
 }
 
 /* ---------- projeção ---------- */
@@ -326,33 +481,28 @@ function renderSetup() {
   el.setup.hidden = false;
   el.ready.hidden = true;
   el.stop.hidden = true;
+  resetLabel();
 }
 
-function renderLog({ keepScroll = false } = {}) {
-  const scrollTop = el.list.scrollTop;
-
-  el.list.replaceChildren(...state.rounds.map((round, index) => {
+function renderLog() {
+  el.list.replaceChildren(...state.rounds.map((round) => {
     const color = LABEL_BY_ID.get(round.color);
     const li = document.createElement('li');
-    const button = document.createElement('button');
+    const row = document.createElement('div');
     const dot = document.createElement('span');
     const body = document.createElement('span');
     const line = document.createElement('span');
     const n = document.createElement('span');
     const t = document.createElement('span');
 
-    button.type = 'button';
-    button.className = 'log__item';
-    button.dataset.index = String(index);
-    button.title = round.note || 'etiquetar volta';
-    button.setAttribute('aria-label',
-      `volta ${pad2(round.n)}, ${formatSeconds(round.seconds)}${round.note ? `, ${round.note}` : ''}`);
+    row.className = 'log__item';
+    if (round.note) row.title = round.note;
 
     dot.className = 'log__dot';
     if (color?.value) {
-      button.style.setProperty('--label', color.value);
+      row.style.setProperty('--label', color.value);
     } else {
-      button.classList.add('log__item--plain');
+      row.classList.add('log__item--plain');
     }
 
     body.className = 'log__body';
@@ -371,16 +521,15 @@ function renderLog({ keepScroll = false } = {}) {
       body.append(note);
     }
 
-    button.append(dot, body);
-    li.append(button);
+    row.append(dot, body);
+    li.append(row);
     return li;
   }));
 
   const total = state.rounds.reduce((sum, round) => sum + round.seconds, 0);
   el.total.textContent = formatSeconds(total);
   el.empty.hidden = state.rounds.length > 0;
-  el.logHint.hidden = state.rounds.length === 0;
-  el.list.scrollTop = keepScroll ? scrollTop : el.list.scrollHeight;
+  el.list.scrollTop = el.list.scrollHeight;
 }
 
 /* ---------- etiquetas ---------- */
@@ -413,17 +562,46 @@ function updateLabelCount() {
   el.labelCount.textContent = String(el.labelNote.value.length);
 }
 
-function openLabel(index) {
-  const round = state.rounds[index];
-  if (!round) {
-    showToast('nenhuma volta para etiquetar');
-    return;
+function hexToRgba(hex, alpha) {
+  const value = Number.parseInt(hex.slice(1), 16);
+  const r = (value >> 16) & 255;
+  const g = (value >> 8) & 255;
+  const b = value & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function renderLabelChip() {
+  const color = LABEL_BY_ID.get(state.label.color);
+  el.labelChipText.textContent = state.label.note || color?.name || 'sem etiqueta';
+  el.labelOpen.classList.toggle('labelChip--plain', !color?.value);
+  if (color?.value) {
+    el.labelOpen.style.setProperty('--label', color.value);
+  } else {
+    el.labelOpen.style.removeProperty('--label');
   }
-  state.labelIndex = index;
-  el.labelSub.textContent = `volta ${pad2(round.n)} · ${formatSeconds(round.seconds)}`;
-  el.labelNote.value = round.note ?? '';
+
+  const round = state.phase === 'awaiting' ? state.round + 1 : Math.max(1, state.round);
+  el.labelOpen.title = `etiqueta da volta ${round}`;
+}
+
+function renderLabelTint() {
+  const color = LABEL_BY_ID.get(state.label.color);
+  el.tint.style.setProperty('--tint', color?.value ? hexToRgba(color.value, 0.17) : 'transparent');
+}
+
+function resetLabel() {
+  state.label = { color: null, note: '' };
+  renderLabelChip();
+  renderLabelTint();
+}
+
+function openLabel() {
+  const round = state.phase === 'awaiting' ? state.round + 1 : Math.max(1, state.round);
+  el.labelSub.textContent = `volta ${pad2(round)}${state.phase === 'running' ? ' em andamento' : ''}`;
+  el.labelNote.value = state.label.note;
   updateLabelCount();
-  const value = round.color ?? 'none';
+
+  const value = state.label.color ?? 'none';
   for (const input of el.labelColors.querySelectorAll('input[name="color"]')) {
     input.checked = input.value === value;
   }
@@ -432,14 +610,14 @@ function openLabel(index) {
 }
 
 function saveLabel() {
-  const round = state.rounds[state.labelIndex];
-  if (round) {
-    const picked = el.labelForm.querySelector('input[name="color"]:checked');
-    const color = picked ? LABEL_BY_ID.get(picked.value) : null;
-    round.color = color?.value ? color.id : null;
-    round.note = el.labelNote.value.trim();
-    renderLog({ keepScroll: true });
-  }
+  const picked = el.labelForm.querySelector('input[name="color"]:checked');
+  const color = picked ? LABEL_BY_ID.get(picked.value) : null;
+  state.label = {
+    color: color?.value ? color.id : null,
+    note: el.labelNote.value.trim(),
+  };
+  renderLabelChip();
+  renderLabelTint();
   el.label.close();
 }
 
@@ -463,6 +641,7 @@ function startRound(seconds) {
 
   setProgress(0);
   el.meta.textContent = `volta ${state.round} · ${formatSeconds(seconds)}`;
+  renderLabelChip();
   paintTime(formatRemaining(seconds * 1000));
   el.setup.hidden = true;
   el.ready.hidden = true;
@@ -490,6 +669,7 @@ function tick() {
 function finishRound() {
   if (state.phase !== 'running') return;
   cancelTimers();
+  if (el.confirm.open) el.confirm.close();
   state.phase = 'awaiting';
   playChime();
 
@@ -497,8 +677,14 @@ function finishRound() {
   paintTime(formatTenths(0));
   el.meta.textContent = `volta ${state.round} concluída`;
 
-  state.rounds.push({ n: state.round, seconds: state.duration, color: null, note: '' });
+  state.rounds.push({
+    n: state.round,
+    seconds: state.duration,
+    color: state.label.color,
+    note: state.label.note,
+  });
   state.next = stepTenths(Math.round(state.duration * 10)) / 10;
+  resetLabel();
   renderLog();
 
   el.readyQ.textContent = `Pronto para a volta ${state.round + 1}?`;
@@ -515,8 +701,18 @@ function confirmNext() {
   startRound(state.next);
 }
 
+function requestStop() {
+  if (state.phase === 'setup') return;
+  el.confirmText.textContent = state.phase === 'running'
+    ? `a volta ${state.round} será interrompida. as voltas concluídas continuam no histórico.`
+    : 'a sessão será encerrada. as voltas concluídas continuam no histórico.';
+  el.confirm.showModal();
+  el.confirmCancel.focus();
+}
+
 function stopSession() {
   if (state.phase === 'setup') return;
+  if (el.confirm.open) el.confirm.close();
   renderSetup();
 }
 
@@ -534,10 +730,25 @@ function startOrConfirm() {
 
 function selectPreset(index) {
   if (state.phase !== 'setup') return;
-  const preset = el.presets.querySelectorAll('.preset')[index];
+  const preset = el.presets.querySelectorAll('.preset[data-seconds]')[index];
   if (!preset) return;
   el.base.value = preset.dataset.seconds;
   syncBase();
+}
+
+function focusTimeInput() {
+  if (state.phase !== 'setup') {
+    showToast('o tempo é definido antes de iniciar');
+    return;
+  }
+  el.base.focus();
+  el.base.select();
+}
+
+function openProjection() {
+  if (el.proj.open) return;
+  renderProjection();
+  el.proj.showModal();
 }
 
 function nudgeBase(event) {
@@ -571,6 +782,7 @@ const SHORTCUTS = [
     keys: ['P'],
     codes: ['KeyP'],
     label: 'parar sessão',
+    note: 'pede confirmação · P de novo confirma',
     action: 'stop',
   },
   {
@@ -585,10 +797,27 @@ const SHORTCUTS = [
   },
   {
     group: 'ajustes',
-    keys: ['1', '2', '3', '4'],
-    codes: ['Digit1', 'Digit2', 'Digit3', 'Digit4'],
-    label: 'presets 30s · 1 · 2 · 5 min',
+    keys: ['T'],
+    codes: ['KeyT'],
+    label: 'definir o tempo à mão',
+    note: 'Enter inicia',
+    action: 'time',
+  },
+  {
+    group: 'ajustes',
+    keys: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+    codes: ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5',
+      'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0'],
+    label: 'escolher preset',
+    note: '1–9 · 0 = décimo',
     action: 'preset',
+  },
+  {
+    group: 'ajustes',
+    keys: ['A'],
+    codes: ['KeyA'],
+    label: 'criar preset personalizado',
+    action: 'preset-new',
   },
   {
     group: 'ajustes',
@@ -608,8 +837,16 @@ const SHORTCUTS = [
     group: 'etiquetas',
     keys: ['E'],
     codes: ['KeyE'],
-    label: 'etiquetar a última volta',
-    action: 'label-last',
+    label: 'etiquetar a volta atual',
+    note: 'cor e descrição antes do fim',
+    action: 'label',
+  },
+  {
+    group: 'exibições',
+    keys: ['V'],
+    codes: ['KeyV'],
+    label: 'abrir a projeção',
+    action: 'projection',
   },
   {
     group: 'sistema',
@@ -688,7 +925,7 @@ function renderShortcuts() {
 }
 
 function dialogs() {
-  return [el.proj, el.label, el.keys].filter((dialog) => dialog.open);
+  return [el.proj, el.label, el.keys, el.confirm, el.presetDlg].filter((dialog) => dialog.open);
 }
 
 function closeDialogs() {
@@ -703,12 +940,19 @@ function openShortcuts() {
 function performAction(action, event) {
   switch (action) {
     case 'start-next': startOrConfirm(); break;
-    case 'stop': stopSession(); break;
+    case 'stop': requestStop(); break;
     case 'nudge': nudgeBase(event); break;
-    case 'preset': selectPreset(Number(event.code.slice(-1)) - 1); break;
+    case 'preset': {
+      const digit = Number(event.code.slice(-1));
+      selectPreset(digit === 0 ? 9 : digit - 1);
+      break;
+    }
+    case 'preset-new': openPresetDialog(); break;
     case 'direct': setMode('direct'); break;
     case 'inverse': setMode('inverse'); break;
-    case 'label-last': openLabel(state.rounds.length - 1); break;
+    case 'label': openLabel(); break;
+    case 'time': focusTimeInput(); break;
+    case 'projection': openProjection(); break;
     case 'notify': toggleNotify(); break;
     case 'keys': openShortcuts(); break;
     case 'close': closeDialogs(); break;
@@ -730,13 +974,17 @@ el.base.addEventListener('input', () => {
 });
 
 el.presets.addEventListener('click', (event) => {
-  const preset = event.target.closest('.preset');
+  if (event.target.closest('#presetAdd')) {
+    openPresetDialog();
+    return;
+  }
+  const preset = event.target.closest('.preset[data-seconds]');
   if (!preset) return;
   el.base.value = preset.dataset.seconds;
   syncBase();
 });
 
-el.stop.addEventListener('click', stopSession);
+el.stop.addEventListener('click', requestStop);
 el.notify.addEventListener('click', toggleNotify);
 
 el.mode.addEventListener('click', (event) => {
@@ -745,21 +993,31 @@ el.mode.addEventListener('click', (event) => {
   setMode(option.dataset.mode);
 });
 
-el.projOpen.addEventListener('click', () => {
-  if (el.proj.open) return;
-  renderProjection();
-  el.proj.showModal();
-});
-
+el.projOpen.addEventListener('click', openProjection);
 el.projClose.addEventListener('click', () => el.proj.close());
 el.keysOpen.addEventListener('click', openShortcuts);
 el.keysClose.addEventListener('click', () => el.keys.close());
 el.labelClose.addEventListener('click', () => el.label.close());
+el.labelOpen.addEventListener('click', openLabel);
 
-el.list.addEventListener('click', (event) => {
-  const item = event.target.closest('.log__item');
-  if (item) openLabel(Number(item.dataset.index));
+el.confirmCancel.addEventListener('click', () => el.confirm.close());
+el.confirmStop.addEventListener('click', stopSession);
+
+el.presetClose.addEventListener('click', () => el.presetDlg.close());
+el.presetForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (addCustomPreset(Number(el.presetSeconds.value))) {
+    el.presetSeconds.value = '';
+    el.presetSeconds.focus();
+  }
 });
+
+el.presetList.addEventListener('click', (event) => {
+  const remove = event.target.closest('.presetDlg__remove');
+  if (remove) removeCustomPreset(Number(remove.dataset.index));
+});
+
+el.toast.addEventListener('click', hideToast);
 
 el.labelNote.addEventListener('input', updateLabelCount);
 
@@ -769,12 +1027,7 @@ el.labelForm.addEventListener('submit', (event) => {
 });
 
 el.labelClear.addEventListener('click', () => {
-  const round = state.rounds[state.labelIndex];
-  if (round) {
-    round.color = null;
-    round.note = '';
-    renderLog({ keepScroll: true });
-  }
+  resetLabel();
   el.label.close();
 });
 
@@ -788,7 +1041,16 @@ function isTyping(target) {
 
 window.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
+    hideToast();
     closeDialogs();
+    return;
+  }
+
+  if (el.confirm.open) {
+    if (event.code === 'KeyP' && !event.repeat) {
+      event.preventDefault();
+      stopSession();
+    }
     return;
   }
 
@@ -818,6 +1080,9 @@ document.addEventListener('visibilitychange', () => {
 });
 
 buildLabelColors();
+renderPresets();
 renderNotify();
 renderShortcuts();
+renderLabelChip();
+renderLabelTint();
 renderSetup();
