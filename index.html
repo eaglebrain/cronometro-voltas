@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cronômetro de voltas</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main class="shell">
+  <section class="stage">
+    <div class="stage__head">
+      <h1>voltas</h1>
+      <div class="stage__tools">
+        <button class="ghost ghost--toggle" id="notify" type="button" aria-pressed="false" hidden>
+          <span class="ghost__dot" aria-hidden="true"></span>notificações
+        </button>
+        <button class="ghost" id="keysOpen" type="button" aria-haspopup="dialog">atalhos<kbd class="key">?</kbd></button>
+        <button class="ghost" id="projOpen" type="button" aria-haspopup="dialog">projeção</button>
+        <button class="ghost ghost--danger" id="stop" type="button" hidden>parar<kbd class="key">p</kbd></button>
+      </div>
+    </div>
+
+    <div class="dial" id="dial" style="--p: 0">
+      <div class="dial__track"></div>
+      <div class="dial__sweep">
+        <div class="dial__fill"></div>
+      </div>
+      <div class="dial__core">
+        <p class="dial__meta" id="meta">primeira volta</p>
+        <p class="dial__time" id="time">0:10.0</p>
+      </div>
+    </div>
+
+    <div class="controls">
+      <form class="setup" id="setup" novalidate>
+        <div class="mode" id="mode" role="group" aria-label="Progressão das voltas">
+          <span class="mode__label">φ</span>
+          <button class="mode__opt" type="button" data-mode="direct" aria-pressed="true">direta</button>
+          <button class="mode__opt" type="button" data-mode="inverse" aria-pressed="false">inversa</button>
+        </div>
+        <div class="setup__row">
+          <input id="base" type="number" inputmode="decimal" min="1" max="3600" step="1"
+                 value="10" aria-label="Duração da primeira volta em segundos">
+          <span class="unit">s</span>
+          <button class="primary" type="submit">iniciar</button>
+        </div>
+        <div class="presets" id="presets" aria-label="Períodos usados">
+          <button class="preset" type="button" data-seconds="30" aria-pressed="false">30s</button>
+          <button class="preset" type="button" data-seconds="60" aria-pressed="false">1min</button>
+          <button class="preset" type="button" data-seconds="120" aria-pressed="false">2min</button>
+          <button class="preset" type="button" data-seconds="300" aria-pressed="false">5min</button>
+        </div>
+        <p class="hint">espaço também começa · <kbd>?</kbd> mostra os atalhos</p>
+      </form>
+
+      <div class="ready" id="ready" hidden aria-live="polite">
+        <p class="ready__q" id="readyQ">Pronto para a próxima volta?</p>
+        <p class="ready__next">próxima volta · <strong id="readyTime">0:16.2</strong></p>
+        <p class="ready__hint">pressione <kbd>espaço</kbd> para começar</p>
+      </div>
+    </div>
+  </section>
+
+  <aside class="log" aria-label="Voltas concluídas">
+    <div class="log__head">
+      <h2>concluídas</h2>
+      <p class="log__total"><strong id="total">0:00.0</strong> total</p>
+    </div>
+    <ol class="log__list" id="list"></ol>
+    <p class="log__empty" id="empty">nenhuma volta ainda</p>
+    <p class="log__hint" id="logHint" hidden>clique para etiquetar · <kbd>e</kbd> última</p>
+  </aside>
+</main>
+
+<dialog class="proj" id="proj" aria-labelledby="projTitle">
+  <header class="proj__head">
+    <div>
+      <h2 id="projTitle">projeção</h2>
+      <p class="proj__sub" id="projSub"></p>
+    </div>
+    <button class="proj__close" id="projClose" type="button" aria-label="fechar">×</button>
+  </header>
+
+  <div class="proj__body">
+    <figure class="proj__chart">
+      <figcaption><span>tempo da volta</span><span id="projMax"></span></figcaption>
+      <svg id="projChart" viewBox="0 0 640 190" role="img" aria-label="Tempo previsto por volta"></svg>
+    </figure>
+
+    <div class="proj__tableWrap">
+      <table class="proj__table">
+        <thead>
+          <tr><th scope="col">volta</th><th scope="col">tempo</th><th scope="col">acumulado</th></tr>
+        </thead>
+        <tbody id="projBody"></tbody>
+      </table>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="sheet label" id="label" aria-labelledby="labelTitle">
+  <form class="label__form" id="labelForm" novalidate>
+    <header class="sheet__head">
+      <div>
+        <h2 id="labelTitle">etiqueta da volta</h2>
+        <p class="sheet__sub" id="labelSub"></p>
+      </div>
+      <button class="sheet__close" id="labelClose" type="button" aria-label="fechar">×</button>
+    </header>
+
+    <fieldset class="label__colors">
+      <legend>cor</legend>
+      <div class="label__swatches" id="labelColors"></div>
+    </fieldset>
+
+    <div class="label__field">
+      <label for="labelNote">descrição</label>
+      <textarea id="labelNote" name="note" rows="3" maxlength="120"
+                placeholder="ex.: intervalo longo, sprint final…"></textarea>
+      <p class="label__count"><span id="labelCount">0</span>/120</p>
+    </div>
+
+    <footer class="sheet__foot">
+      <button class="ghost" id="labelClear" type="button">remover etiqueta</button>
+      <button class="primary" type="submit">salvar</button>
+    </footer>
+  </form>
+</dialog>
+
+<dialog class="sheet keys" id="keys" aria-labelledby="keysTitle">
+  <header class="sheet__head">
+    <div>
+      <h2 id="keysTitle">atalhos</h2>
+      <p class="sheet__sub">funcionam fora dos campos de texto</p>
+    </div>
+    <button class="sheet__close" id="keysClose" type="button" aria-label="fechar">×</button>
+  </header>
+  <div class="keys__body" id="keysBody"></div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>
