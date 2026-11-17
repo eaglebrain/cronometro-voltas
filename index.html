@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<div class="tint" id="tint" aria-hidden="true"></div>
 <main class="shell">
   <section class="stage">
     <div class="stage__head">
@@ -32,6 +33,12 @@
       </div>
     </div>
 
+    <button class="labelChip" id="labelOpen" type="button" aria-haspopup="dialog">
+      <span class="labelChip__dot" aria-hidden="true"></span>
+      <span class="labelChip__text" id="labelChipText">sem etiqueta</span>
+      <kbd class="key">e</kbd>
+    </button>
+
     <div class="controls">
       <form class="setup" id="setup" novalidate>
         <div class="mode" id="mode" role="group" aria-label="Progressão das voltas">
@@ -45,12 +52,7 @@
           <span class="unit">s</span>
           <button class="primary" type="submit">iniciar</button>
         </div>
-        <div class="presets" id="presets" aria-label="Períodos usados">
-          <button class="preset" type="button" data-seconds="30" aria-pressed="false">30s</button>
-          <button class="preset" type="button" data-seconds="60" aria-pressed="false">1min</button>
-          <button class="preset" type="button" data-seconds="120" aria-pressed="false">2min</button>
-          <button class="preset" type="button" data-seconds="300" aria-pressed="false">5min</button>
-        </div>
+        <div class="presets" id="presets" aria-label="Períodos usados"></div>
         <p class="hint">espaço também começa · <kbd>?</kbd> mostra os atalhos</p>
       </form>
 
@@ -69,7 +71,6 @@
     </div>
     <ol class="log__list" id="list"></ol>
     <p class="log__empty" id="empty">nenhuma volta ainda</p>
-    <p class="log__hint" id="logHint" hidden>clique para etiquetar · <kbd>e</kbd> última</p>
   </aside>
 </main>
 
@@ -137,6 +138,44 @@
     <button class="sheet__close" id="keysClose" type="button" aria-label="fechar">×</button>
   </header>
   <div class="keys__body" id="keysBody"></div>
+</dialog>
+
+<dialog class="sheet confirm" id="confirm" aria-labelledby="confirmTitle">
+  <div class="confirm__body">
+    <h2 id="confirmTitle">parar a sessão?</h2>
+    <p class="confirm__text" id="confirmText"></p>
+    <p class="confirm__hint"><kbd>p</kbd> de novo confirma · <kbd>esc</kbd> cancela</p>
+  </div>
+  <footer class="sheet__foot">
+    <button class="ghost" id="confirmCancel" type="button">continuar</button>
+    <button class="primary primary--danger" id="confirmStop" type="button">parar</button>
+  </footer>
+</dialog>
+
+<dialog class="sheet presetDlg" id="presetDlg" aria-labelledby="presetTitle">
+  <form class="presetDlg__form" id="presetForm" novalidate>
+    <header class="sheet__head">
+      <div>
+        <h2 id="presetTitle">presets</h2>
+        <p class="sheet__sub">salvos neste navegador</p>
+      </div>
+      <button class="sheet__close" id="presetClose" type="button" aria-label="fechar">×</button>
+    </header>
+
+    <div class="presetDlg__add">
+      <label for="presetSeconds">segundos</label>
+      <input id="presetSeconds" type="number" inputmode="numeric" min="1" max="3600" step="1" placeholder="90">
+      <button class="primary" type="submit">adicionar</button>
+    </div>
+
+    <div class="presetDlg__listWrap">
+      <h3>personalizados</h3>
+      <ul class="presetDlg__list" id="presetList"></ul>
+      <p class="presetDlg__empty" id="presetEmpty">nenhum preset personalizado</p>
+    </div>
+
+    <p class="presetDlg__hint">teclas <kbd>1</kbd>–<kbd>9</kbd> e <kbd>0</kbd> escolhem os primeiros dez presets</p>
+  </form>
 </dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
