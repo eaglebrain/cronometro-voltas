@@ -9,7 +9,8 @@ Cronômetro de voltas com progressão φ (1,618): cada volta é a anterior multi
 ## Funcionalidades
 
 - **Voltas em φ** — modo direto (`×φ`) ou inverso (`÷φ`), com confirmação manual entre voltas.
-- **Etiqueta antes da volta** — cor e descrição são definidas durante a volta em andamento (ou no preparo/espera da próxima). A cor tinge o fundo de forma discreta e a etiqueta é gravada no histórico ao concluir. O histórico é somente leitura.
+- **Etiqueta da rodada** — cor e descrição pertencem à rodada, isto é, à sequência contínua de voltas em φ da sessão. A etiqueta persiste entre voltas e alterações nela atualizam a rodada inteira; a cor tinge o fundo de forma discreta.
+- **Retomar uma volta** — clique numa volta concluída para rodá-la de novo com o mesmo tempo. Durante uma volta em andamento, o app pede confirmação; a partir do preparo, inicia uma nova rodada herdando a etiqueta daquela volta.
 - **Presets** — 30 s, 1, 2, 3 e 5 min, além de presets personalizados persistidos no navegador.
 - **Fim de volta** — som curto, popup na tela e notificação do sistema (quando permitida).
 - **Projeção** — gráfico e tabela das próximas 12 voltas.

@@ -40,6 +40,9 @@ const el = {
   list: document.getElementById('list'),
   total: document.getElementById('total'),
   empty: document.getElementById('empty'),
+  logLabel: document.getElementById('logLabel'),
+  logLabelText: document.getElementById('logLabelText'),
+  logHint: document.getElementById('logHint'),
   labelOpen: document.getElementById('labelOpen'),
   labelChipText: document.getElementById('labelChipText'),
   label: document.getElementById('label'),
@@ -51,7 +54,9 @@ const el = {
   labelNote: document.getElementById('labelNote'),
   labelCount: document.getElementById('labelCount'),
   confirm: document.getElementById('confirm'),
+  confirmTitle: document.getElementById('confirmTitle'),
   confirmText: document.getElementById('confirmText'),
+  confirmHint: document.getElementById('confirmHint'),
   confirmCancel: document.getElementById('confirmCancel'),
   confirmStop: document.getElementById('confirmStop'),
   presetDlg: document.getElementById('presetDlg'),
@@ -82,6 +87,9 @@ const state = {
   rounds: [],
   label: { color: null, note: '' },
 };
+
+let confirmAction = null;
+let confirmKind = 'stop';
 
 /* ---------- preferências ---------- */
 
@@ -485,24 +493,28 @@ function renderSetup() {
 }
 
 function renderLog() {
-  el.list.replaceChildren(...state.rounds.map((round) => {
+  el.list.replaceChildren(...state.rounds.map((round, index) => {
     const color = LABEL_BY_ID.get(round.color);
     const li = document.createElement('li');
-    const row = document.createElement('div');
+    const button = document.createElement('button');
     const dot = document.createElement('span');
     const body = document.createElement('span');
     const line = document.createElement('span');
     const n = document.createElement('span');
     const t = document.createElement('span');
 
-    row.className = 'log__item';
-    if (round.note) row.title = round.note;
+    button.type = 'button';
+    button.className = 'log__item';
+    button.dataset.index = String(index);
+    button.title = `retomar a volta ${pad2(round.n)} · ${formatSeconds(round.seconds)}`;
+    button.setAttribute('aria-label',
+      `retomar a volta ${pad2(round.n)}, ${formatSeconds(round.seconds)}`);
 
     dot.className = 'log__dot';
     if (color?.value) {
-      row.style.setProperty('--label', color.value);
+      button.style.setProperty('--label', color.value);
     } else {
-      row.classList.add('log__item--plain');
+      button.classList.add('log__item--plain');
     }
 
     body.className = 'log__body';
@@ -513,22 +525,28 @@ function renderLog() {
     t.textContent = formatSeconds(round.seconds);
     line.append(n, t);
     body.append(line);
-
-    if (round.note) {
-      const note = document.createElement('span');
-      note.className = 'log__note';
-      note.textContent = round.note;
-      body.append(note);
-    }
-
-    row.append(dot, body);
-    li.append(row);
+    button.append(dot, body);
+    li.append(button);
     return li;
   }));
 
   const total = state.rounds.reduce((sum, round) => sum + round.seconds, 0);
+  const latest = state.rounds[state.rounds.length - 1];
+  const color = latest ? LABEL_BY_ID.get(latest.color) : null;
+
   el.total.textContent = formatSeconds(total);
   el.empty.hidden = state.rounds.length > 0;
+  el.logHint.hidden = state.rounds.length === 0;
+  el.logLabel.hidden = !latest;
+  if (latest) {
+    el.logLabelText.textContent = latest.note || color?.name || 'sem etiqueta';
+    el.logLabel.classList.toggle('log__label--plain', !color?.value);
+    if (color?.value) {
+      el.logLabel.style.setProperty('--label', color.value);
+    } else {
+      el.logLabel.style.removeProperty('--label');
+    }
+  }
   el.list.scrollTop = el.list.scrollHeight;
 }
 
@@ -580,8 +598,7 @@ function renderLabelChip() {
     el.labelOpen.style.removeProperty('--label');
   }
 
-  const round = state.phase === 'awaiting' ? state.round + 1 : Math.max(1, state.round);
-  el.labelOpen.title = `etiqueta da volta ${round}`;
+  el.labelOpen.title = 'etiqueta da rodada';
 }
 
 function renderLabelTint() {
@@ -596,8 +613,7 @@ function resetLabel() {
 }
 
 function openLabel() {
-  const round = state.phase === 'awaiting' ? state.round + 1 : Math.max(1, state.round);
-  el.labelSub.textContent = `volta ${pad2(round)}${state.phase === 'running' ? ' em andamento' : ''}`;
+  el.labelSub.textContent = state.phase === 'setup' ? 'nova rodada' : 'rodada atual';
   el.labelNote.value = state.label.note;
   updateLabelCount();
 
@@ -609,6 +625,15 @@ function openLabel() {
   el.labelNote.focus();
 }
 
+function applyLabelToRounds() {
+  if (state.phase === 'setup') return;
+  for (const round of state.rounds) {
+    round.color = state.label.color;
+    round.note = state.label.note;
+  }
+  renderLog();
+}
+
 function saveLabel() {
   const picked = el.labelForm.querySelector('input[name="color"]:checked');
   const color = picked ? LABEL_BY_ID.get(picked.value) : null;
@@ -618,6 +643,7 @@ function saveLabel() {
   };
   renderLabelChip();
   renderLabelTint();
+  applyLabelToRounds();
   el.label.close();
 }
 
@@ -669,7 +695,7 @@ function tick() {
 function finishRound() {
   if (state.phase !== 'running') return;
   cancelTimers();
-  if (el.confirm.open) el.confirm.close();
+  closeConfirm();
   state.phase = 'awaiting';
   playChime();
 
@@ -684,7 +710,6 @@ function finishRound() {
     note: state.label.note,
   });
   state.next = stepTenths(Math.round(state.duration * 10)) / 10;
-  resetLabel();
   renderLog();
 
   el.readyQ.textContent = `Pronto para a volta ${state.round + 1}?`;
@@ -701,19 +726,79 @@ function confirmNext() {
   startRound(state.next);
 }
 
-function requestStop() {
-  if (state.phase === 'setup') return;
-  el.confirmText.textContent = state.phase === 'running'
-    ? `a volta ${state.round} será interrompida. as voltas concluídas continuam no histórico.`
-    : 'a sessão será encerrada. as voltas concluídas continuam no histórico.';
+function closeConfirm() {
+  if (el.confirm.open) el.confirm.close();
+  confirmAction = null;
+}
+
+function askConfirm({ title, text, label, kind, action }) {
+  el.confirmTitle.textContent = title;
+  el.confirmText.textContent = text;
+  el.confirmStop.textContent = label;
+  el.confirmStop.className = kind === 'stop' ? 'primary primary--danger' : 'primary';
+  el.confirmHint.innerHTML = kind === 'stop'
+    ? '<kbd>p</kbd> de novo confirma · <kbd>esc</kbd> cancela'
+    : '<kbd>esc</kbd> cancela';
+  confirmKind = kind;
+  confirmAction = action;
   el.confirm.showModal();
   el.confirmCancel.focus();
 }
 
+function runConfirm() {
+  const action = confirmAction;
+  closeConfirm();
+  if (action) action();
+}
+
+function requestStop() {
+  if (state.phase === 'setup') return;
+  askConfirm({
+    title: 'parar a sessão?',
+    text: state.phase === 'running'
+      ? `a volta ${state.round} será interrompida. as voltas concluídas continuam no histórico.`
+      : 'a sessão será encerrada. as voltas concluídas continuam no histórico.',
+    label: 'parar',
+    kind: 'stop',
+    action: stopSession,
+  });
+}
+
 function stopSession() {
   if (state.phase === 'setup') return;
-  if (el.confirm.open) el.confirm.close();
+  closeConfirm();
   renderSetup();
+}
+
+function resumeLap(index) {
+  const round = state.rounds[index];
+  if (!round) return;
+
+  const run = () => {
+    if (state.phase === 'setup') {
+      state.label = { color: round.color, note: round.note };
+      renderLabelChip();
+      renderLabelTint();
+      startSession(round.seconds);
+      return;
+    }
+    // substitui a volta em andamento sem abrir buraco na numeração
+    if (state.phase === 'running') state.round -= 1;
+    startRound(round.seconds);
+  };
+
+  if (state.phase === 'running') {
+    askConfirm({
+      title: `retomar a volta ${pad2(round.n)}?`,
+      text: `a volta ${state.round} em andamento será interrompida e substituída por ${formatSeconds(round.seconds)}.`,
+      label: 'retomar',
+      kind: 'resume',
+      action: run,
+    });
+    return;
+  }
+
+  run();
 }
 
 /* ---------- atalhos ---------- */
@@ -929,6 +1014,7 @@ function dialogs() {
 }
 
 function closeDialogs() {
+  closeConfirm();
   for (const dialog of dialogs()) dialog.close();
 }
 
@@ -1000,8 +1086,13 @@ el.keysClose.addEventListener('click', () => el.keys.close());
 el.labelClose.addEventListener('click', () => el.label.close());
 el.labelOpen.addEventListener('click', openLabel);
 
-el.confirmCancel.addEventListener('click', () => el.confirm.close());
-el.confirmStop.addEventListener('click', stopSession);
+el.confirmCancel.addEventListener('click', closeConfirm);
+el.confirmStop.addEventListener('click', runConfirm);
+
+el.list.addEventListener('click', (event) => {
+  const item = event.target.closest('.log__item');
+  if (item) resumeLap(Number(item.dataset.index));
+});
 
 el.presetClose.addEventListener('click', () => el.presetDlg.close());
 el.presetForm.addEventListener('submit', (event) => {
@@ -1028,6 +1119,7 @@ el.labelForm.addEventListener('submit', (event) => {
 
 el.labelClear.addEventListener('click', () => {
   resetLabel();
+  applyLabelToRounds();
   el.label.close();
 });
 
@@ -1047,9 +1139,9 @@ window.addEventListener('keydown', (event) => {
   }
 
   if (el.confirm.open) {
-    if (event.code === 'KeyP' && !event.repeat) {
+    if (confirmKind === 'stop' && event.code === 'KeyP' && !event.repeat) {
       event.preventDefault();
-      stopSession();
+      runConfirm();
     }
     return;
   }
