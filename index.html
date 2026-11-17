@@ -69,8 +69,13 @@
       <h2>concluídas</h2>
       <p class="log__total"><strong id="total">0:00.0</strong> total</p>
     </div>
+    <p class="log__label" id="logLabel" hidden>
+      <span class="log__labelDot" id="logLabelDot" aria-hidden="true"></span>
+      <span id="logLabelText"></span>
+    </p>
     <ol class="log__list" id="list"></ol>
     <p class="log__empty" id="empty">nenhuma volta ainda</p>
+    <p class="log__hint" id="logHint" hidden>clique numa volta para retomar</p>
   </aside>
 </main>
 
@@ -144,7 +149,7 @@
   <div class="confirm__body">
     <h2 id="confirmTitle">parar a sessão?</h2>
     <p class="confirm__text" id="confirmText"></p>
-    <p class="confirm__hint"><kbd>p</kbd> de novo confirma · <kbd>esc</kbd> cancela</p>
+    <p class="confirm__hint" id="confirmHint"><kbd>p</kbd> de novo confirma · <kbd>esc</kbd> cancela</p>
   </div>
   <footer class="sheet__foot">
     <button class="ghost" id="confirmCancel" type="button">continuar</button>
